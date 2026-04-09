@@ -1,0 +1,10 @@
+site_name: dough
+
+theme:
+  name: material
+
+markdown_extensions:
+  - admonition
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
