@@ -8,7 +8,7 @@ import dataclasses
 import typing
 from functools import cached_property
 
-from glom import glom, GlomError, Spec
+from glom import glom, GlomError, Spec  # type: ignore[import-untyped]
 
 from dough.converters.base import BaseConverter
 
@@ -27,7 +27,7 @@ class SubMapping:
         self.mapping_cls = mapping_cls
 
 
-def output_mapping(cls):
+def output_mapping(cls: typing.Any) -> type:
     """Decorator that defines a typed, frozen output mapping for a code.
 
     Applies `@dataclass(frozen=True)` and injects `__getattribute__` and `__dir__` so that:
@@ -46,13 +46,13 @@ def output_mapping(cls):
         \"""Nested magnetization outputs.\"""
     """
 
-    def __getattribute__(self, name):
+    def __getattribute__(self: typing.Any, name: str) -> typing.Any:
         value = object.__getattribute__(self, name)
         if isinstance(value, (Spec, SubMapping)):
             raise AttributeError(f"'{name}' is not available in the parsed outputs.")
         return value
 
-    def __dir__(self):
+    def __dir__(self: typing.Any) -> list[str]:
         return [
             name
             for name, value in self.__dict__.items()
@@ -111,18 +111,18 @@ class BaseOutput(abc.ABC, typing.Generic[T]):
             if typing.get_origin(base) is BaseOutput and (
                 args := typing.get_args(base)
             ):
-                return args[0]
+                return args[0]  # type: ignore[no-any-return]
         raise TypeError(
             f"{cls.__name__} must subclass BaseOutput[T] with a decorated output mapping, "
             "e.g. class PwOutput(BaseOutput[_PwMapping])"
         )
 
-    def __init__(self, raw_outputs: dict):
+    def __init__(self, raw_outputs: dict[str, typing.Any]) -> None:
         self.raw_outputs = raw_outputs
 
-        def build(mapping_cls: type) -> dict:
+        def build(mapping_cls: type) -> dict[str, typing.Any]:
             """Build the nested spec dict from a mapping class."""
-            result: dict = {}
+            result: dict[str, typing.Any] = {}
 
             for field in dataclasses.fields(mapping_cls):
                 if isinstance(field.default, SubMapping):
@@ -141,10 +141,10 @@ class BaseOutput(abc.ABC, typing.Generic[T]):
 
     @classmethod
     @abc.abstractmethod
-    def from_dir(cls, directory: str):
+    def from_dir(cls, directory: str) -> BaseOutput[T]:
         pass
 
-    def get_output_from_spec(self, spec):
+    def get_output_from_spec(self, spec: typing.Any) -> typing.Any:
         """Return a value from `raw_outputs` using a glom specification.
 
         Args:
@@ -155,7 +155,7 @@ class BaseOutput(abc.ABC, typing.Generic[T]):
         """
         return glom(self.raw_outputs, spec)
 
-    def get_output(self, name: str, to: str | None = None):
+    def get_output(self, name: str, to: str | None = None) -> typing.Any:
         """Return an output by `name`.
 
         Args:
@@ -217,7 +217,7 @@ class BaseOutput(abc.ABC, typing.Generic[T]):
         self,
         names: None | list[str] = None,
         to: str | None = None,
-    ) -> dict:
+    ) -> dict[str, typing.Any]:
         """Return a dictionary of outputs.
 
         Args:
@@ -269,7 +269,7 @@ class BaseOutput(abc.ABC, typing.Generic[T]):
     def outputs(self) -> T:
         """Namespace with available outputs."""
 
-        def build(mapping_cls: type, data: dict):
+        def build(mapping_cls: type, data: dict[str, typing.Any]) -> typing.Any:
             defaults = {f.name: f.default for f in dataclasses.fields(mapping_cls)}
             kwargs = {
                 name: build(defaults[name].mapping_cls, value)  # type: ignore[union-attr]
@@ -279,4 +279,4 @@ class BaseOutput(abc.ABC, typing.Generic[T]):
             }
             return mapping_cls(**kwargs)
 
-        return build(self._get_mapping_class(), self.get_output_dict())
+        return build(self._get_mapping_class(), self.get_output_dict())  # type: ignore[no-any-return]

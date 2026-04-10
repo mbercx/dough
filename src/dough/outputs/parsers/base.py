@@ -5,7 +5,7 @@ from __future__ import annotations
 import abc
 from io import TextIOBase
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 
 
 class BaseOutputFileParser(abc.ABC):
@@ -16,11 +16,11 @@ class BaseOutputFileParser(abc.ABC):
 
     @staticmethod
     @abc.abstractmethod
-    def parse(content: str):
+    def parse(content: str) -> dict[str, Any]:
         """Parse the file content and return a dictionary of parsed data."""
 
     @classmethod
-    def parse_from_file(cls, file: str | Path | TextIO):
+    def parse_from_file(cls, file: str | Path | TextIO) -> dict[str, Any]:
         """
         Helper function to generate a BaseOutputFileParser object
         from a file instead of its string.

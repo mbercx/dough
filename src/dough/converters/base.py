@@ -1,6 +1,6 @@
 import typing
 
-from glom import glom
+from glom import glom  # type: ignore[import-untyped]
 
 
 class BaseConverter:
@@ -15,7 +15,7 @@ class BaseConverter:
         raise NotImplementedError
 
     @classmethod
-    def convert(cls, output: str, base_output: dict):
+    def convert(cls, output: str, base_output: dict[str, typing.Any]) -> typing.Any:
         output_converter, output_spec = cls.get_conversion_mapping()[output]
 
         arguments = glom(base_output, output_spec)
