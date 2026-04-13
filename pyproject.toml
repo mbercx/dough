@@ -5,12 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "dough"
 dynamic = ["version"]
-description = ''
+description = 'Roll your own typed wrapper'
 readme = "README.md"
 requires-python = ">=3.10"
 license = {file = "LICENSE"}
 keywords = []
-authors = []
+authors = [
+  {name = "Marnik Bercx"},
+]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Programming Language :: Python",
