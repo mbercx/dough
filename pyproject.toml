@@ -32,6 +32,7 @@ docs = [
 tests = [
   "pytest",
   "pyyaml",
+  "pytest-cov"
 ]
 pre-commit = [
   "pre-commit",
@@ -68,10 +69,17 @@ scripts.run = "pre-commit run {args}"
 features = ["tests"]
 randomize = false
 parallel = false
-run = "pytest {args}"
 
 [[tool.hatch.envs.hatch-test.matrix]]
 python = ["3.10", "3.11", "3.12", "3.13", "3.14"]
+
+[tool.coverage.run]
+source = ["dough"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 50
 
 [tool.ruff]
 lint.ignore = [
