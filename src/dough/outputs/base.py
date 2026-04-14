@@ -142,7 +142,7 @@ class BaseOutput(abc.ABC, typing.Generic[T]):
     @classmethod
     @abc.abstractmethod
     def from_dir(cls, directory: str) -> BaseOutput[T]:
-        pass
+        pass  # pragma: no cover
 
     def get_output_from_spec(self, spec: typing.Any) -> typing.Any:
         """Return a value from `raw_outputs` using a glom specification.
