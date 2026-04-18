@@ -126,12 +126,21 @@ Each extracted output is declared as a typed field on a per-code mapping class d
 ```python
 @output_mapping
 class _MyMapping:
-    fermi_energy: float = Spec("xml.output.band_structure.fermi_energy")
+    fermi_energy: Annotated[float, Spec("xml.output.band_structure.fermi_energy")]
     """Fermi energy in eV."""
 ```
 
 This is a single source of truth: the field declaration carries the output name, type annotation, extraction `Spec`, and docstring.
 Adding a new output means adding one field — nothing else.
+
+A field may declare an explicit fallback default, returned when the `Spec` fails to resolve:
+
+```python
+job_done: Annotated[bool, Spec("stdout.job_done")] = False
+"""Whether the job completed. Defaults to `False` if not parsed."""
+```
+
+Fields without an explicit default get an internal `_NOT_PARSED` sentinel, and accessing them on the `outputs` namespace raises `AttributeError` when the `Spec` didn't resolve.
 
 The mapping class is connected to the output class via the generic typing syntax:
 
@@ -140,19 +149,17 @@ class MyOutput(BaseOutput[_MyMapping]):
     ...
 ```
 
-`BaseOutput` extracts the mapping class from this generic parameter at instantiation, then uses `dataclasses.fields()` to build `_output_spec_mapping` — a dict mapping each field name to its `Spec`.
+`BaseOutput` extracts the mapping class from this generic parameter at instantiation, then uses `dataclasses.fields()` to build `_output_spec_mapping` — a dict mapping each field name to its `Spec` (read from the field's `Annotated` metadata).
 The actual extraction runs when the user accesses `outputs`: glom resolves each `Spec` against `raw_outputs`, and the results are used to populate the mapping instance.
-Fields whose `Spec` cannot be resolved retain the `Spec` object as their value — a placeholder that signals "not extracted".
-Accessing such a field on the `outputs` namespace raises `AttributeError` with a clear message.
+Fields whose `Spec` cannot be resolved keep their dataclass default — either `_NOT_PARSED` or the explicit fallback.
+Accessing a `_NOT_PARSED` field on the `outputs` namespace raises `AttributeError` with a clear message; fallback defaults pass through normally.
 
 !!! note
 
-    The `Spec` object here acts as a placeholder for an output that was not produced by the calculation.
-    Other options would be `None`, `dataclasses.MISSING`, or a custom sentinel — all carry the same semantic awkwardness: the field is typed as `float`, but its value is not a float.
-    The initial option we chose was `Annotated[float | None, Spec(...)] = None`, but this has several drawbacks: it implies the field can legitimately be `None` (no more honest), it is considerably more verbose, it requires type-hacking to extract the `Spec` from `Annotated`, and contributors adding new outputs may not be familiar with `Annotated`.
-
-    Using `Spec` as the field default has a key advantage: it unambiguously identifies the value as a glom spec, making it clear both that the field is not yet extracted *and* how it will be extracted.
-    The `@output_mapping` decorator enforces that every field uses a `Spec` as its default, catching mistakes at instantiation.
+    Moving the `Spec` into `Annotated` metadata (rather than using it as the field default) means the default slot is free for real values like `False` or `0`.
+    This in turn lets callers distinguish "not parsed, but we know the sensible default" from "not parsed at all" purely via the declaration — no extra sentinel logic in callers.
+    It also matches the pattern already used for sub-namespace fields, where the bare annotation `parameters: _ParametersMapping` carries the metadata (the mapping class itself) and the decorator injects a `SubMapping(hint)` default.
+    Future per-field metadata (e.g. a `Unit("eV")` marker) slots in alongside `Spec` in the same `Annotated` list.
 
 The `@output_mapping` decorator applies `@dataclass(frozen=True)` to the mapping class, making the extracted outputs immutable: users cannot overwrite a parsed result.
 Beyond this, `BaseOutput` itself is designed to be stateful but immutable — it stores `raw_outputs` and derived data at construction, and no mutating methods are allowed after that point.

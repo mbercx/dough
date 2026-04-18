@@ -1,4 +1,6 @@
 from textwrap import dedent
+from typing import Annotated
+
 from glom import Spec, T
 
 import pytest
@@ -29,16 +31,16 @@ class _DoubleConverter(BaseConverter):
 
 @output_mapping
 class _NestedMapping:
-    c: int = Spec("b.c")
-    d: int = Spec("b.d")
-    missing: int = Spec("b.nope")
+    c: Annotated[int, Spec("b.c")]
+    d: Annotated[int, Spec("b.d")]
+    missing: Annotated[int, Spec("b.nope")]
 
 
 @output_mapping
 class _TestMapping:
-    A: float = Spec("a")
-    unmapped: int = Spec("b.c")
-    not_parsed: str = Spec("e")
+    A: Annotated[float, Spec("a")]
+    unmapped: Annotated[int, Spec("b.c")]
+    not_parsed: Annotated[str, Spec("e")]
     nested: _NestedMapping
 
 
@@ -144,11 +146,41 @@ def test_submapping_get_output_namespace_returns_dict(raw_outputs):
     assert out.get_output("nested")["c"] == 3
 
 
-def test_validation_rejects_non_spec_top_level_default():
-    """Top-level field defaults that aren't `Spec`/`SubMapping` raise in `__init__`."""
+def test_decorator_rejects_bare_annotation_non_output_mapping():
+    """Bare annotation whose type isn't `@output_mapping`-decorated is rejected at decoration time."""
+    with pytest.raises(TypeError, match="bad.*@output_mapping class"):
+
+        @output_mapping
+        class _BadBare:
+            bad: int
+
+
+def test_decorator_rejects_annotated_without_spec():
+    """`Annotated[T, ...]` without a `Spec` is rejected at decoration time."""
+    with pytest.raises(TypeError, match="bad.*Annotated"):
+
+        @output_mapping
+        class _BadAnn:
+            bad: Annotated[int, "not a spec"]
+
+
+def test_decorator_rejects_multiple_specs():
+    """Multiple `Spec` entries in one `Annotated` raise `TypeError`."""
+    with pytest.raises(TypeError, match="multiple Spec entries"):
+
+        @output_mapping
+        class _BadMulti:
+            bad: Annotated[int, Spec("x"), Spec("y")]
+
+
+def test_base_init_rejects_non_annotated_non_submapping_default():
+    """Non-Annotated field with a plain default (not a `SubMapping`) raises in `__init__`."""
 
     @output_mapping
     class _BadParent:
+        # Escapes decorator injection (has a default), then trips the `build`
+        # guard at instantiation because it's neither Annotated[T, Spec] nor a
+        # SubMapping default.
         bad: int = 42  # type: ignore[assignment]
 
     class _BadOutput(BaseOutput[_BadParent]):
@@ -160,24 +192,61 @@ def test_validation_rejects_non_spec_top_level_default():
         _BadOutput(raw_outputs={})
 
 
-def test_decorator_rejects_bare_annotation_non_output_mapping():
-    """Bare annotation whose type isn't `@output_mapping`-decorated is rejected at decoration time."""
-    with pytest.raises(TypeError, match="bad.*@output_mapping class"):
+# --- Fallback defaults on Annotated fields ------------------------------------
 
-        @output_mapping
-        class _BadBare:
-            bad: int
+
+@output_mapping
+class _DefaultsMapping:
+    """Mapping with an explicit fallback default on an unparsed field."""
+
+    parsed: Annotated[int, Spec("a")]
+    unparsed_default: Annotated[bool, Spec("missing.path")] = False
+    unparsed_no_default: Annotated[str, Spec("other.missing")]
+
+
+class _DefaultsOutput(BaseOutput[_DefaultsMapping]):
+    @classmethod
+    def from_dir(cls, _: str):
+        pass
+
+
+def test_explicit_default_is_reachable(raw_outputs):
+    """Fallback default is returned when the Spec doesn't resolve."""
+    outputs = _DefaultsOutput(raw_outputs).outputs
+    assert outputs.parsed == 1
+    assert outputs.unparsed_default is False
+
+
+def test_unparsed_without_default_raises(raw_outputs):
+    """Unparsed field with no explicit default still raises."""
+    outputs = _DefaultsOutput(raw_outputs).outputs
+    with pytest.raises(AttributeError, match="unparsed_no_default.*not available"):
+        outputs.unparsed_no_default
+
+
+def test_explicit_default_not_in_list_outputs(raw_outputs):
+    """Fallback default doesn't count as 'available' — field is not listed."""
+    assert _DefaultsOutput(raw_outputs).list_outputs() == ["parsed"]
 
 
 # --- __dir__ on output mapping instances --------------------------------------
 
 
 def test_dir_only_lists_resolved_fields(raw_outputs):
-    """`dir()` on a mapping instance excludes fields still holding `Spec`/`SubMapping`."""
+    """`dir()` on a mapping instance excludes fields still holding sentinels."""
     outputs = _TestOutput(raw_outputs).outputs
     visible = dir(outputs)
     assert "A" in visible
     assert "not_parsed" not in visible
+
+
+def test_dir_includes_fields_with_fallback_default(raw_outputs):
+    """Fallback defaults are real values, so `dir()` lists them."""
+    outputs = _DefaultsOutput(raw_outputs).outputs
+    visible = dir(outputs)
+    assert "parsed" in visible
+    assert "unparsed_default" in visible
+    assert "unparsed_no_default" not in visible
 
 
 # --- _get_mapping_class error path -------------------------------------------
@@ -242,7 +311,7 @@ def test_get_output_to_with_empty_converters_raises(raw_outputs):
 
     @output_mapping
     class _M:
-        A: float = Spec("a")
+        A: Annotated[float, Spec("a")]
 
     class _Out(BaseOutput[_M]):
         converters = {}
@@ -277,7 +346,7 @@ def test_converter_exception_propagates(raw_outputs):
 
     @output_mapping
     class _M:
-        A: float = Spec("a")
+        A: Annotated[float, Spec("a")]
 
     class _Out(BaseOutput[_M]):
         converters = {"broken": _BrokenConverter}
