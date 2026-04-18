@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.2.0
+
+### 💥 Breaking changes
+
+* `output_mapping`: Move `Spec` into `Annotated[T, Spec(...)]` [[dc7dc58](https://github.com/mbercx/dough/commit/dc7dc58382e9183d0d44db37c78d7a020d197873)]
+
+### 📚 Documentation
+
+* `docs`: Add design doc for output machinery [[8f1b6f7](https://github.com/mbercx/dough/commit/8f1b6f7205135cd88c94eab39267312ba750c98f)]
+
+### Developer
+
+#### 🧪 Tests
+
+* `tests`: Expand coverage for base outputs, converters, and parsers [[d56772b](https://github.com/mbercx/dough/commit/d56772b00444faf5013b670d882f11f7795dec50)]
+* `tests`: Replace placeholder test with `__about__` coverage [[6cdcba8](https://github.com/mbercx/dough/commit/6cdcba83c6406eb7617c86b5843bd4a762f8f9dd)]
+
+#### 🔧 DevOps
+
+* `mypy`: Ignore missing imports for `glom` via override [[9f0e4b8](https://github.com/mbercx/dough/commit/9f0e4b8218666817d4b8d4395b5d2f36f9f925d0)]
+
 ## v0.1.0
 
 First release, mostly to reserve the name on PyPI.
