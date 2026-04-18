@@ -7,6 +7,7 @@ import contextlib
 import dataclasses
 import typing
 from functools import cached_property
+from typing import Annotated
 
 from glom import glom, GlomError, Spec  # type: ignore[import-untyped]
 
@@ -14,6 +15,16 @@ from dough.converters.base import BaseConverter
 
 
 T = typing.TypeVar("T")
+
+
+_NOT_PARSED = object()
+"""Sentinel marking a field whose `Spec` was not resolved against `raw_outputs`.
+
+Installed by `@output_mapping` as the dataclass default for every
+`Annotated[T, Spec(...)]` field that does not declare an explicit default.
+`__getattribute__` raises on this sentinel; explicit defaults (e.g. `= False`)
+are left untouched and reachable normally.
+"""
 
 
 class SubMapping:
@@ -27,28 +38,58 @@ class SubMapping:
         self.mapping_cls = mapping_cls
 
 
+def _spec_from_annotated(hint: typing.Any) -> Spec | None:
+    """Return the `Spec` embedded in an `Annotated[...]` type hint, or `None`.
+
+    Raises `TypeError` if multiple `Spec` entries are present.
+    """
+    if typing.get_origin(hint) is not Annotated:
+        return None
+    specs = [arg for arg in typing.get_args(hint)[1:] if isinstance(arg, Spec)]
+    if not specs:
+        return None
+    if len(specs) > 1:
+        raise TypeError(f"Annotated type has multiple Spec entries: {hint!r}")
+    return specs[0]
+
+
 def output_mapping(cls: typing.Any) -> type:
-    """Decorator that defines a typed, frozen output mapping for a code.
+    """Declare a typed, frozen output mapping for a simulation code.
 
-    Applies `@dataclass(frozen=True)` and injects `__getattribute__` and `__dir__` so that:
+    Each field on the decorated class becomes one output of the corresponding
+    `BaseOutput` subclass. There are two kinds of fields:
 
-    - Accessing a field whose value is still a `Spec` or `SubMapping` raises
-      `AttributeError` with a clear message (i.e. the output was not parsed).
-    - `dir()` only lists fields that were successfully extracted.
+    **Parse-target fields** — a quantity extracted from `raw_outputs` via glom.
+    Declared as `Annotated[T, Spec(...)]`, with a docstring stating units:
 
-    Output fields declare a `Spec(...)` default. Sub-namespace fields are
-    declared with a bare annotation whose type is another `@output_mapping`
-    class — the decorator auto-injects a `SubMapping(hint)` default:
-
-        fermi_energy: float = Spec("path.to.fermi_energy")
+        fermi_energy: Annotated[float, Spec("xml.output.band_structure.fermi_energy")]
         \"""Fermi energy in eV.\"""
-        magnetization: _MagnetizationMapping
-        \"""Nested magnetization outputs.\"""
+
+    If the `Spec` fails to resolve, accessing the field on the `outputs`
+    namespace raises `AttributeError`. Attach an explicit default to return
+    that value instead when parsing fails:
+
+        job_done: Annotated[bool, Spec("stdout.job_done")] = False
+        \"""Whether the job completed. Defaults to False if not parsed.\"""
+
+    **Sub-namespace fields** — a nested group of outputs. Declared as a bare
+    annotation whose type is another `@output_mapping` class:
+
+        parameters: _ParametersMapping
+        \"""Parameters the calculation ran with.\"""
+
+    Sub-namespace classes must be defined before the parent that references
+    them, and should themselves only contain parse-target fields (one level of
+    nesting).
+
+    The decorator applies `@dataclass(frozen=True)`, so parsed outputs are
+    immutable. `dir()` on a mapping instance lists only the fields that
+    actually resolved, for clean tab completion.
     """
 
     def __getattribute__(self: typing.Any, name: str) -> typing.Any:
         value = object.__getattribute__(self, name)
-        if isinstance(value, (Spec, SubMapping)):
+        if value is _NOT_PARSED or isinstance(value, SubMapping):
             raise AttributeError(f"'{name}' is not available in the parsed outputs.")
         return value
 
@@ -56,31 +97,49 @@ def output_mapping(cls: typing.Any) -> type:
         return [
             name
             for name, value in self.__dict__.items()
-            if not isinstance(value, (Spec, SubMapping))
+            if value is not _NOT_PARSED and not isinstance(value, SubMapping)
         ]
 
     cls.__getattribute__ = __getattribute__
     cls.__dir__ = __dir__
 
-    # Inject `SubMapping(hint)` defaults for bare annotations whose type is
-    # itself an `@output_mapping`-decorated class. Note: `get_type_hints`
-    # evaluates annotations, which is fine as long as the module does not use
+    # Inject dataclass defaults so that mapping instances can be constructed
+    # without supplying every field — the `outputs` cached_property only passes
+    # kwargs for fields that resolved, and the rest must come from defaults.
+    #
+    # Parse-target fields (`Annotated[T, Spec(...)]`) without an explicit
+    # fallback get `_NOT_PARSED`, which `__getattribute__` traps to raise a
+    # clear "not available" error. Fields with an explicit fallback are left
+    # alone — the explicit value is returned directly when the Spec fails.
+    #
+    # Sub-namespace fields (bare `_OtherMapping`) get a `SubMapping(hint)`
+    # placeholder; the `outputs` builder always replaces it with an
+    # instantiated sub-mapping, so it never reaches user code.
+    #
+    # Note: `get_type_hints` evaluates annotations; modules that use
     # `from __future__ import annotations` together with `TYPE_CHECKING`-only
-    # sub-mapping imports — in that case the eval would raise `NameError` here.
-    # Sub-mapping classes must be defined *before* the parent that references
-    # them (Python enforces this anyway for non-future-annotations modules).
-    for name, hint in typing.get_type_hints(cls).items():
+    # sub-mapping imports would raise `NameError` here. Sub-mapping classes
+    # must be defined *before* the parent that references them.
+    hints = typing.get_type_hints(cls, include_extras=True)
+    for name, hint in hints.items():
         if hasattr(cls, name):  # already has a default
             continue
 
-        if not (isinstance(hint, type) and getattr(hint, "_is_output_mapping", False)):
-            raise TypeError(
-                f"{cls.__name__}.{name}: needs a Spec(...) default, or a bare "
-                f"annotation whose type is an @output_mapping class "
-                f"(which must be defined before this class)"
-            )
+        spec = _spec_from_annotated(hint)
 
-        setattr(cls, name, SubMapping(hint))
+        if spec is not None:
+            setattr(cls, name, _NOT_PARSED)
+            continue
+
+        if isinstance(hint, type) and getattr(hint, "_is_output_mapping", False):
+            setattr(cls, name, SubMapping(hint))
+            continue
+
+        raise TypeError(
+            f"{cls.__name__}.{name}: needs an `Annotated[T, Spec(...)]` annotation "
+            f"(optionally with a fallback default), or a bare annotation whose type "
+            f"is an @output_mapping class (which must be defined before this class)"
+        )
 
     cls._is_output_mapping = True
     return dataclasses.dataclass(frozen=True)(cls)
@@ -122,17 +181,23 @@ class BaseOutput(abc.ABC, typing.Generic[T]):
 
         def build(mapping_cls: type) -> dict[str, typing.Any]:
             """Build the nested spec dict from a mapping class."""
+
             result: dict[str, typing.Any] = {}
+            hints = typing.get_type_hints(mapping_cls, include_extras=True)
 
             for field in dataclasses.fields(mapping_cls):
-                if isinstance(field.default, SubMapping):
+                hint = hints[field.name]
+                spec = _spec_from_annotated(hint)
+
+                if spec is not None:
+                    result[field.name] = spec
+                elif isinstance(field.default, SubMapping):
                     result[field.name] = build(field.default.mapping_cls)
-                elif isinstance(field.default, Spec):
-                    result[field.name] = field.default
                 else:
                     raise TypeError(
-                        f"{mapping_cls.__name__}.{field.name}: expected a Spec(...) or "
-                        f"SubMapping(...) default, got {field.default!r}"
+                        f"{mapping_cls.__name__}.{field.name}: expected an "
+                        f"`Annotated[T, Spec(...)]` annotation or a `SubMapping` "
+                        f"default, got {field.default!r}"
                     )
 
             return result
@@ -271,12 +336,14 @@ class BaseOutput(abc.ABC, typing.Generic[T]):
 
         def build(mapping_cls: type, data: dict[str, typing.Any]) -> typing.Any:
             defaults = {f.name: f.default for f in dataclasses.fields(mapping_cls)}
-            kwargs = {
-                name: build(defaults[name].mapping_cls, value)  # type: ignore[union-attr]
-                if isinstance(defaults[name], SubMapping)
-                else value
-                for name, value in data.items()
-            }
+            kwargs = {}
+
+            for name, default in defaults.items():
+                if isinstance(default, SubMapping):
+                    kwargs[name] = build(default.mapping_cls, data.get(name, {}))
+                elif name in data:
+                    kwargs[name] = data[name]
+
             return mapping_cls(**kwargs)
 
         return build(self._get_mapping_class(), self.get_output_dict())  # type: ignore[no-any-return]
