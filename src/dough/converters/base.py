@@ -1,6 +1,6 @@
 import typing
 
-from glom import glom  # type: ignore[import-untyped]
+from glom import glom
 
 
 class BaseConverter:
