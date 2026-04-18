@@ -9,7 +9,7 @@ import typing
 from functools import cached_property
 from typing import Annotated
 
-from glom import glom, GlomError, Spec  # type: ignore[import-untyped]
+from glom import glom, GlomError, Spec
 
 from dough.converters.base import BaseConverter
 
