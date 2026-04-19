@@ -15,6 +15,7 @@ from dough.converters.base import BaseConverter
 
 
 T = typing.TypeVar("T")
+TC = typing.TypeVar("TC", bound=type)
 
 
 _NOT_PARSED = object()
@@ -53,8 +54,8 @@ def _spec_from_annotated(hint: typing.Any) -> Spec | None:
     return specs[0]
 
 
-def output_mapping(cls: typing.Any) -> type:
-    """Declare a typed, frozen output mapping for a simulation code.
+def output_mapping(cls: TC) -> TC:
+    """Decorator that defines a typed, frozen output mapping for a code.
 
     Each field on the decorated class becomes one output of the corresponding
     `BaseOutput` subclass. There are two kinds of fields:
