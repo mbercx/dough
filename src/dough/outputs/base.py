@@ -101,8 +101,8 @@ def output_mapping(cls: TC) -> TC:
             if value is not _NOT_PARSED and not isinstance(value, SubMapping)
         ]
 
-    cls.__getattribute__ = __getattribute__
-    cls.__dir__ = __dir__
+    setattr(cls, "__getattribute__", __getattribute__)
+    setattr(cls, "__dir__", __dir__)
 
     # Inject dataclass defaults so that mapping instances can be constructed
     # without supplying every field — the `outputs` cached_property only passes
@@ -142,8 +142,8 @@ def output_mapping(cls: TC) -> TC:
             f"is an @output_mapping class (which must be defined before this class)"
         )
 
-    cls._is_output_mapping = True
-    return dataclasses.dataclass(frozen=True)(cls)
+    setattr(cls, "_is_output_mapping", True)
+    return dataclasses.dataclass(frozen=True)(cls)  # type: ignore[return-value]
 
 
 class BaseOutput(abc.ABC, typing.Generic[T]):
