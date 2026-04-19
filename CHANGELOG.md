@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.2.1
+
+### 🐛 Bug fixes
+
+* `output_mapping`: Preserve decorated class type for type checkers [[c5fe3d7](https://github.com/mbercx/dough/commit/c5fe3d7d388a71d075d8848dc8afe31a3c654d54)]
+
+### Developer
+
+#### 🔧 DevOps
+
+* `output_mapping`: Silence mypy on runtime class mutation [[1ebe0a6](https://github.com/mbercx/dough/commit/1ebe0a6cf592a6592e1de7f395fcd70be3f451ee)]
+
 ## v0.2.0
 
 ### 💥 Breaking changes
