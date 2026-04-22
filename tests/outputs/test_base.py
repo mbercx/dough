@@ -357,3 +357,48 @@ def test_converter_exception_propagates(raw_outputs):
 
     with pytest.raises(RuntimeError, match="converter exploded"):
         _Out(raw_outputs).get_output("A", to="broken")
+
+
+# --- __repr__ on output mapping instances ------------------------------------
+
+
+def test_repr_lists_resolved_fields(raw_outputs):
+    """repr includes resolved fields and omits unresolved ones."""
+    text = repr(_TestOutput(raw_outputs).outputs)
+    assert "A=1" in text
+    assert "unmapped=3" in text
+    assert "not_parsed" not in text
+
+
+def test_repr_nested_sub_mapping(raw_outputs):
+    """Resolved sub-mapping is rendered recursively, unresolved inner field skipped."""
+    text = repr(_TestOutput(raw_outputs).outputs)
+    assert "nested=_NestedMapping(c=3, d=4)" in text
+    assert "missing" not in text
+
+
+def test_repr_all_unresolved():
+    """Parent with no resolved fields and an empty sub-mapping renders as ClassName().
+
+    This pins both that the parent shows `ClassName()` with no fields and that the
+    empty nested sub-mapping is skipped (not rendered as `nested=_NestedMapping()`).
+    """
+    assert repr(_TestOutput({"x": 1}).outputs) == "_TestMapping()"
+
+
+def test_repr_includes_explicit_default(raw_outputs):
+    """Explicit fallback defaults appear in repr; unresolved-no-default fields do not."""
+    text = repr(_DefaultsOutput(raw_outputs).outputs)
+    assert "parsed=1" in text
+    assert "unparsed_default=False" in text
+    assert "unparsed_no_default" not in text
+
+
+def test_repr_eval_round_trip(raw_outputs):
+    """`eval(repr(x))` reconstructs an equivalent instance on the resolved subset."""
+    original = _TestOutput(raw_outputs).outputs
+    reconstructed = eval(repr(original))
+    assert reconstructed.A == original.A
+    assert reconstructed.unmapped == original.unmapped
+    assert reconstructed.nested.c == original.nested.c
+    assert reconstructed.nested.d == original.nested.d

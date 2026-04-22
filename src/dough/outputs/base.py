@@ -85,7 +85,9 @@ def output_mapping(cls: TC) -> TC:
 
     The decorator applies `@dataclass(frozen=True)`, so parsed outputs are
     immutable. `dir()` on a mapping instance lists only the fields that
-    actually resolved, for clean tab completion.
+    actually resolved, for clean tab completion. `repr()` follows the same
+    rule: unresolved fields are omitted, and sub-mappings that resolved no
+    fields are skipped in the parent repr.
     """
 
     def __getattribute__(self: typing.Any, name: str) -> typing.Any:
@@ -101,8 +103,25 @@ def output_mapping(cls: TC) -> TC:
             if value is not _NOT_PARSED and not isinstance(value, SubMapping)
         ]
 
+    def __repr__(self: typing.Any) -> str:
+        parts = []
+
+        for field in dataclasses.fields(self):
+            try:
+                # Re-use the `__getattribute__` hook: unresolved fields raise.
+                value = getattr(self, field.name)
+            except AttributeError:
+                continue
+            # Re-use the `__dir__` hook: empty sub-mapping → `dir(value) == []`.
+            if getattr(type(value), "_is_output_mapping", False) and dir(value) == []:
+                continue
+            parts.append(f"{field.name}={repr(value)}")
+
+        return f"{type(self).__name__}({', '.join(parts)})"
+
     setattr(cls, "__getattribute__", __getattribute__)
     setattr(cls, "__dir__", __dir__)
+    setattr(cls, "__repr__", __repr__)
 
     # Inject dataclass defaults so that mapping instances can be constructed
     # without supplying every field — the `outputs` cached_property only passes
@@ -143,7 +162,7 @@ def output_mapping(cls: TC) -> TC:
         )
 
     setattr(cls, "_is_output_mapping", True)
-    return dataclasses.dataclass(frozen=True)(cls)  # type: ignore[return-value]
+    return dataclasses.dataclass(frozen=True, repr=False)(cls)  # type: ignore[return-value]
 
 
 class BaseOutput(abc.ABC, typing.Generic[T]):
