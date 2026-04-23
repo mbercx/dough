@@ -27,7 +27,7 @@ and install the package locally in **editable** mode (`-e`):
 
     🔧 **Pre-commit**
 
-    To make sure your changes adhere to our formatting/linting preferences, install the pre-commit hooks:
+    To make sure your changes adhere to our formatting/linting preferences and commit-message convention, install the pre-commit hooks:
 
         pre-commit install
 
@@ -70,7 +70,7 @@ and install the package locally in **editable** mode (`-e`):
 
     🔧 **Pre-commit**
 
-    To make sure your changes adhere to our formatting/linting preferences, install the pre-commit hooks:
+    To make sure your changes adhere to our formatting/linting preferences and commit-message convention, install the pre-commit hooks:
 
         uvx pre-commit install
 
@@ -119,7 +119,7 @@ and install the package locally in **editable** mode (`-e`):
 
     🔧 **Pre-commit**
 
-    To make sure your changes adhere to our formatting/linting preferences, install the pre-commit hooks:
+    To make sure your changes adhere to our formatting/linting preferences and commit-message convention, install the pre-commit hooks:
 
         hatch run pre-commit:install
 
@@ -220,8 +220,8 @@ PyPI only sees the version baked into the built distribution, so a mismatch will
 
 ## Commit messages
 
-We use a leading emoji to indicate the type of change in each commit.
-The changelog script (`dev/update_changelog.py`) uses these emojis to automatically sort commits into the right sections.
-This means that the sorting in types happens at commit time, when the changes are still fresh in memory.
+Each commit subject must start with a leading emoji indicating the type of change.
+This is enforced locally by a `commit-msg` pre-commit hook (`dev/check_commit_msg.py`) and in CI by a `commit-msgs` job that checks every commit in a pull request.
+The changelog script (`dev/update_changelog.py`) uses the same emojis to automatically sort commits into the right sections, so the sorting happens at commit time, when the changes are still fresh in memory.
 
-For the full specification and emoji table, see the [commit message conventions](https://mbercx.github.io/python-copier/dev-standards/#commit-messages).
+For the full specification and emoji table, see the [commit message conventions](https://mbercx.github.io/python-copier/dev-standards/#specifying-the-type-of-change).
