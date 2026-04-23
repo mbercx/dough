@@ -34,7 +34,9 @@ docs = [
 tests = [
   "pytest",
   "pyyaml",
-  "pytest-cov"
+  "pytest-cov",
+  "pytest-regressions",
+  "numpy",
 ]
 pre-commit = [
   "pre-commit",
@@ -63,7 +65,7 @@ scripts.serve = "mkdocs serve --dev-addr localhost:8000"
 scripts.deploy = "mkdocs gh-deploy --force"
 
 [tool.hatch.envs.pre-commit]
-features = ["pre-commit"]
+features = ["pre-commit", "tests"]
 scripts.install = "pre-commit install"
 scripts.run = "pre-commit run {args}"
 
