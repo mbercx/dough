@@ -1,6 +1,6 @@
 """Update `CHANGELOG.md` based on commits since the latest release tag.
 
-Commit type conventions: https://mbercx.github.io/python-copier/dev-standards/#commit-messages
+Commit type conventions: https://mbercx.github.io/python-copier/dev-standards/#specifying-the-type-of-change
 """
 
 # ruff: noqa: S603, S607
@@ -21,10 +21,10 @@ CHANGELOG_SECTIONS: dict[str, str] = {
     "✨": "New features",
     "👌": "Improvements",
     "🐛": "Bug fixes",
+    "📚": "Documentation",
 }
 
 DEVELOPER_SECTIONS: dict[str, str] = {
-    "📚": "Documentation",
     "🔄": "Refactor",
     "🧪": "Tests",
     "⏪": "Reverts",
@@ -161,15 +161,15 @@ def update_changelog() -> None:
             section_text += f"\n### {emoji} {section_name}\n\n"
             section_text += "\n".join(sections[emoji]) + "\n"
 
-    # Developer section with H4 subsections
+    # Developer section with plain-text subsections
     dev_text = ""
     for emoji, section_name in DEVELOPER_SECTIONS.items():
         if sections[emoji]:
-            dev_text += f"\n#### {emoji} {section_name}\n\n"
+            dev_text += f"\n{emoji} {section_name}\n\n"
             dev_text += "\n".join(sections[emoji]) + "\n"
 
     if dev_text:
-        section_text += f"\n### Developer\n{dev_text}"
+        section_text += f"\n#### Developer\n{dev_text}"
 
     header = "# Changelog\n\n"
     body = current.removeprefix("# Changelog").lstrip("\n")
