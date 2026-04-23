@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.3.0
+
+### ✨ New features
+
+* `dough.testing`: Add pytest plugin with shared fixtures [[f5173bf](https://github.com/mbercx/dough/commit/f5173bf27e36efc7f6817d093645b34872182de8)]
+
+### 👌 Improvements
+
+* `output_mapping`: add `__repr__` skipping unresolved fields [[44a9a83](https://github.com/mbercx/dough/commit/44a9a83eb1ad28e110d25a7fcc2a955a5df761b1)]
+
+### 📚 Documentation
+
+* `CHANGELOG`: Demote Developer subsections below release heading [[ae7fed1](https://github.com/mbercx/dough/commit/ae7fed117d2a1cd758b4536839db4ef8dac30dce)]
+
+#### Developer
+
+🔧 DevOps
+
+* `copier`: update package template to v0.16.0 [[9b28c9f](https://github.com/mbercx/dough/commit/9b28c9f703744918cec6bad6cc76055acf292a05)]
+
 ## v0.2.1
 
 ### 🐛 Bug fixes
