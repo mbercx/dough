@@ -37,11 +37,13 @@ tests = [
   "pytest-cov",
   "pytest-regressions",
   "numpy",
+  "dough[pint]",
 ]
 pre-commit = [
   "pre-commit",
   "mypy"
 ]
+pint = ["pint>0.24,<0.25"]
 
 [dependency-groups]
 dev = [

@@ -7,6 +7,7 @@ nav:
   - Home: index.md
   - Design:
       - Outputs: design/outputs.md
+      - Units: design/units.md
       - Testing: design/testing.md
   - Developer guide: developer.md
 

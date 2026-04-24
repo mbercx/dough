@@ -1,3 +1,4 @@
+import typing
 from textwrap import dedent
 from typing import Annotated
 
@@ -7,6 +8,7 @@ import pytest
 import yaml
 
 from dough.converters.base import BaseConverter
+from dough import Unit
 from dough.outputs.base import BaseOutput, output_mapping
 
 
@@ -31,16 +33,17 @@ class _DoubleConverter(BaseConverter):
 
 @output_mapping
 class _NestedMapping:
-    c: Annotated[int, Spec("b.c")]
+    c: Annotated[int, Spec("b.c"), Unit("eV")]
     d: Annotated[int, Spec("b.d")]
     missing: Annotated[int, Spec("b.nope")]
 
 
 @output_mapping
 class _TestMapping:
-    A: Annotated[float, Spec("a")]
+    A: Annotated[float, Spec("a"), Unit("eV")]
     unmapped: Annotated[int, Spec("b.c")]
     not_parsed: Annotated[str, Spec("e")]
+    forces: Annotated[typing.Any, Spec("forces"), Unit("eV/angstrom")]
     nested: _NestedMapping
 
 
@@ -60,7 +63,8 @@ class _TestOutput(BaseOutput[_TestMapping]):
 @pytest.fixture
 def raw_outputs():
     """Simple `raw_outputs` for transparent testing."""
-    return yaml.safe_load(
+    np = pytest.importorskip("numpy")
+    data = yaml.safe_load(
         dedent(
             """
             a: 1
@@ -70,6 +74,8 @@ def raw_outputs():
             """
         )
     )
+    data["forces"] = np.array([[0.1, 0.0, 0.0], [0.0, 0.2, 0.0]])
+    return data
 
 
 # =============================================================================
@@ -90,11 +96,17 @@ def test_get_output_from_spec(raw_outputs, spec, result):
 
 
 def test_list_outputs(raw_outputs):
-    assert _TestOutput(raw_outputs).list_outputs() == ["A", "unmapped", "nested"]
+    assert _TestOutput(raw_outputs).list_outputs() == [
+        "A",
+        "unmapped",
+        "forces",
+        "nested",
+    ]
     assert _TestOutput(raw_outputs).list_outputs(only_available=False) == [
         "A",
         "unmapped",
         "not_parsed",
+        "forces",
         "nested",
     ]
 
@@ -112,11 +124,14 @@ def test_outputs_frozen(raw_outputs):
 
 
 def test_get_output_dict(raw_outputs):
-    assert _TestOutput(raw_outputs).get_output_dict() == {
+    out = _TestOutput(raw_outputs).get_output_dict()
+    forces = out.pop("forces")
+    assert out == {
         "A": 1,
         "unmapped": 3,
         "nested": {"c": 3, "d": 4},
     }
+    assert list(forces.shape) == [2, 3]
     assert _TestOutput(raw_outputs).get_output_dict(["A"]) == {"A": 1}
     with pytest.raises(KeyError):
         _TestOutput(raw_outputs).get_output_dict(["B"])
@@ -326,7 +341,9 @@ def test_get_output_to_with_empty_converters_raises(raw_outputs):
 
 def test_get_output_dict_with_converter(raw_outputs):
     """`get_output_dict(to=...)` applies the converter per-output, passes through unmapped names."""
-    assert _TestOutput(raw_outputs).get_output_dict(to="double") == {
+    out = _TestOutput(raw_outputs).get_output_dict(to="double")
+    out.pop("forces")
+    assert out == {
         "A": 2,
         "unmapped": 3,
         "nested": {"c": 6, "d": 4},
@@ -396,9 +413,129 @@ def test_repr_includes_explicit_default(raw_outputs):
 
 def test_repr_eval_round_trip(raw_outputs):
     """`eval(repr(x))` reconstructs an equivalent instance on the resolved subset."""
+    np = pytest.importorskip("numpy")
     original = _TestOutput(raw_outputs).outputs
-    reconstructed = eval(repr(original))
+    reconstructed = eval(repr(original), {"array": np.array, **globals()})
     assert reconstructed.A == original.A
     assert reconstructed.unmapped == original.unmapped
     assert reconstructed.nested.c == original.nested.c
     assert reconstructed.nested.d == original.nested.d
+
+
+# =============================================================================
+# _unit_from_annotated
+# =============================================================================
+
+
+def test_unit_from_annotated_returns_unit_when_present():
+    from dough.outputs.base import _unit_from_annotated
+
+    hint = Annotated[float, Spec("x"), Unit("eV")]
+    assert _unit_from_annotated(hint) == Unit("eV")
+
+
+def test_unit_from_annotated_returns_none_when_absent():
+    from dough.outputs.base import _unit_from_annotated
+
+    hint = Annotated[float, Spec("x")]
+    assert _unit_from_annotated(hint) is None
+
+
+def test_unit_from_annotated_returns_none_on_bare_type():
+    from dough.outputs.base import _unit_from_annotated
+
+    assert _unit_from_annotated(int) is None
+    assert _unit_from_annotated(list[int]) is None
+
+
+def test_unit_from_annotated_returns_first_when_multiple():
+    from dough.outputs.base import _unit_from_annotated
+
+    hint = Annotated[float, Spec("x"), Unit("eV"), Unit("Ha")]
+    assert _unit_from_annotated(hint) == Unit("eV")
+
+
+# =============================================================================
+# BaseOutput._field_mapping units
+# =============================================================================
+
+
+def test_field_mapping_flat_with_unit_records_unit(raw_outputs):
+    _spec, unit = _TestOutput(raw_outputs)._field_mapping["A"]
+    assert unit == Unit("eV")
+
+
+def test_field_mapping_flat_without_unit_records_none(raw_outputs):
+    _spec, unit = _TestOutput(raw_outputs)._field_mapping["unmapped"]
+    assert unit is None
+
+
+def test_field_mapping_submapping_nests_tuples(raw_outputs):
+    sub = _TestOutput(raw_outputs)._field_mapping["nested"]
+    assert {name: unit for name, (_spec, unit) in sub.items()} == {
+        "c": Unit("eV"),
+        "d": None,
+        "missing": None,
+    }
+
+
+def test_field_mapping_preserves_explicit_default_field():
+    @output_mapping
+    class _M:
+        flag: Annotated[bool, Spec("x"), Unit("")] = False
+
+    class _O(BaseOutput[_M]):
+        @classmethod
+        def from_dir(cls, _: str):
+            raise NotImplementedError
+
+    _spec, unit = _O(raw_outputs={})._field_mapping["flag"]
+    assert unit == Unit("")
+
+
+# =============================================================================
+# BaseOutput.get_output(to="pint")
+# =============================================================================
+
+
+def test_get_output_pint_numeric_with_unit_returns_quantity(raw_outputs):
+    q = _TestOutput(raw_outputs).get_output("A", to="pint")
+    assert q.magnitude == pytest.approx(1.0)
+    assert str(q.units) == "electron_volt"
+
+
+def test_get_output_pint_numeric_no_unit_returns_raw(raw_outputs):
+    assert _TestOutput(raw_outputs).get_output("unmapped", to="pint") == 3
+
+
+def test_get_output_pint_submapping_returns_mixed_dict(raw_outputs):
+    out = _TestOutput(raw_outputs).get_output("nested", to="pint")
+    assert out["d"] == 4
+    assert out["c"].magnitude == pytest.approx(3)
+    assert str(out["c"].units) == "electron_volt"
+
+
+def test_get_output_pint_chainable(raw_outputs):
+    q = _TestOutput(raw_outputs).get_output("A", to="pint")
+    j = q.to("joule")
+    assert j.magnitude == pytest.approx(1.0 * 1.602176634e-19)
+
+
+def test_get_output_pint_ndarray_whole_array_quantity(raw_outputs):
+    np = pytest.importorskip("numpy")
+    q = _TestOutput(raw_outputs).get_output("forces", to="pint")
+    np.testing.assert_allclose(q.magnitude, [[0.1, 0.0, 0.0], [0.0, 0.2, 0.0]])
+    converted = q.to("eV/nanometer")
+    np.testing.assert_allclose(converted.magnitude, [[1.0, 0.0, 0.0], [0.0, 2.0, 0.0]])
+
+
+def test_get_output_dict_pint_mixed_no_raises(raw_outputs):
+    out = _TestOutput(raw_outputs).get_output_dict(to="pint")
+
+    assert out["A"].magnitude == pytest.approx(1.0)
+    assert str(out["A"].units) == "electron_volt"
+
+    assert out["unmapped"] == 3
+
+    assert out["nested"]["d"] == 4
+    assert out["nested"]["c"].magnitude == pytest.approx(3)
