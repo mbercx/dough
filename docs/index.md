@@ -63,6 +63,29 @@ my_out = MyOutput.from_dir("/path/to/run_dir")
 my_out.outputs.fermi_energy  # -> float
 ```
 
+## ⚖️ Units and pint
+
+Stack a `Unit` marker to label a field's physical unit:
+
+```python
+@output_mapping
+class _MyMapping:
+    total_energy: Annotated[float, Spec("energy"), Unit("eV")]
+    xc_functional: Annotated[str, Spec("xc")]
+```
+
+Users can obtain a [`pint`](https://pint.readthedocs.io/) `Quantity` when reading the output:
+
+```python
+out.get_output("total_energy")             # 6.23
+out.get_output("total_energy", to="pint")  # <Quantity(6.23, 'eV')>
+out.get_output("total_energy", to="pint").to("Ha")
+```
+
+Non-numeric fields and fields without a `Unit` marker pass through unchanged under `to="pint"`.
+Install with `pip install dough[pint]`.
+See [the units design page](design/units.md) for the full contract.
+
 ## 🧪 Testing
 
 `dough.testing` ships shared pytest fixtures (`json_serializer`, `robust_data_regression_check`) used by downstream wrapper packages for regression tests.

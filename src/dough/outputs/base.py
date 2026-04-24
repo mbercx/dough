@@ -12,6 +12,7 @@ from typing import Annotated
 from glom import glom, GlomError, Spec
 
 from dough.converters.base import BaseConverter
+from dough._units import Unit, get_ureg
 
 
 T = typing.TypeVar("T")
@@ -52,6 +53,23 @@ def _spec_from_annotated(hint: typing.Any) -> Spec | None:
     if len(specs) > 1:
         raise TypeError(f"Annotated type has multiple Spec entries: {hint!r}")
     return specs[0]
+
+
+def _unit_from_annotated(hint: typing.Any) -> Unit | None:
+    """Return the first `Unit` embedded in an `Annotated[...]` hint, or `None`.
+
+    Multiple `Unit` entries are not rejected at runtime — `dough` relies on an
+    out-of-band lint to catch that labeling bug, and skips the runtime check on
+    every decoration.
+    """
+    if typing.get_origin(hint) is not Annotated:
+        return None
+
+    for arg in typing.get_args(hint)[1:]:
+        if isinstance(arg, Unit):
+            return arg
+
+    return None
 
 
 def output_mapping(cls: TC) -> TC:
@@ -200,7 +218,10 @@ class BaseOutput(abc.ABC, typing.Generic[T]):
         self.raw_outputs = raw_outputs
 
         def build(mapping_cls: type) -> dict[str, typing.Any]:
-            """Build the nested spec dict from a mapping class."""
+            """Build the nested field mapping from a mapping class.
+
+            Each leaf is a `(spec, unit)` tuple; sub-mappings nest as dicts.
+            """
 
             result: dict[str, typing.Any] = {}
             hints = typing.get_type_hints(mapping_cls, include_extras=True)
@@ -210,7 +231,7 @@ class BaseOutput(abc.ABC, typing.Generic[T]):
                 spec = _spec_from_annotated(hint)
 
                 if spec is not None:
-                    result[field.name] = spec
+                    result[field.name] = (spec, _unit_from_annotated(hint))
                 elif isinstance(field.default, SubMapping):
                     result[field.name] = build(field.default.mapping_cls)
                 else:
@@ -222,7 +243,7 @@ class BaseOutput(abc.ABC, typing.Generic[T]):
 
             return result
 
-        self._output_spec_mapping = build(self._get_mapping_class())
+        self._field_mapping = build(self._get_mapping_class())
 
     @classmethod
     @abc.abstractmethod
@@ -246,9 +267,10 @@ class BaseOutput(abc.ABC, typing.Generic[T]):
         Args:
             name (str): Output to retrieve (e.g., "structure", "fermi_energy",
                 "forces").
-            to (str): Optional target library to convert the base output to.
+            to (str): Optional target library to convert the base output to. `"pint"`
+                returns a `pint.Quantity` for unit-marked outputs.
 
-                The supported values are the keys of this subclass's `converters`
+                Other supported values are the keys of this subclass's `converters`
                 class variable — list them with
 
                     `sorted(OutputClass.converters)`
@@ -257,21 +279,33 @@ class BaseOutput(abc.ABC, typing.Generic[T]):
                 available options.
 
         Examples:
-            >>> pw_out.get_output(name="structure")
-            >>> pw_out.get_output(name="structure", to="pymatgen")
+            >>> pw_out.get_output("structure")
+            >>> pw_out.get_output("structure", to="pymatgen")
+            >>> pw_out.get_output("total_energy", to="pint").to("Ha")
         """
-        entry = self._output_spec_mapping[name]
+        entry = self._field_mapping[name]
 
         if isinstance(entry, dict):
             output_data: typing.Any = {}
 
-            for sub_name, sub_spec in entry.items():
+            for sub_name, (sub_spec, sub_unit) in entry.items():
                 with contextlib.suppress(GlomError):
-                    output_data[sub_name] = glom(self.raw_outputs, sub_spec)
+                    value = glom(self.raw_outputs, sub_spec)
+                    output_data[sub_name] = (
+                        get_ureg().Quantity(value, sub_unit.value)
+                        if to == "pint" and sub_unit is not None
+                        else value
+                    )
         else:
-            output_data = glom(self.raw_outputs, entry)
+            spec, unit = entry
+            value = glom(self.raw_outputs, spec)
+            output_data = (
+                get_ureg().Quantity(value, unit.value)
+                if to == "pint" and unit is not None
+                else value
+            )
 
-        if to is None:
+        if to is None or to == "pint":
             return output_data
 
         try:
@@ -306,11 +340,12 @@ class BaseOutput(abc.ABC, typing.Generic[T]):
         """Return a dictionary of outputs.
 
         Args:
-            names (list[str]): Output names to include. If not provided, all
-                available outputs are included.
-            to (str): Optional target library to convert the base output to.
+            names (list[str]): Output names to include. Defaults to all
+                available outputs.
+            to (str): Optional target library to convert the base output to. `"pint"`
+                returns a `pint.Quantity` for unit-marked outputs.
 
-                The supported values are the keys of this subclass's `converters`
+                Other supported values are the keys of this subclass's `converters`
                 class variable — list them with
 
                     `sorted(OutputClass.converters)`
@@ -336,11 +371,11 @@ class BaseOutput(abc.ABC, typing.Generic[T]):
             list[str]: A list of output names.
         """
         if not only_available:
-            return list(self._output_spec_mapping.keys())
+            return list(self._field_mapping.keys())
 
         output_names = []
 
-        for name in self._output_spec_mapping.keys():
+        for name in self._field_mapping.keys():
             try:
                 self.get_output(name)
             except GlomError:
