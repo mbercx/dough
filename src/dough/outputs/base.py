@@ -285,52 +285,37 @@ class BaseOutput(abc.ABC, typing.Generic[T]):
         """
         entry = self._field_mapping[name]
 
-        if isinstance(entry, dict):
-            output_data: typing.Any = {}
-
-            for sub_name, (sub_spec, sub_unit) in entry.items():
-                with contextlib.suppress(GlomError):
-                    value = glom(self.raw_outputs, sub_spec)
-                    output_data[sub_name] = (
-                        get_ureg().Quantity(value, sub_unit.value)
-                        if to == "pint" and sub_unit is not None
-                        else value
-                    )
-        else:
-            spec, unit = entry
-            value = glom(self.raw_outputs, spec)
-            output_data = (
-                get_ureg().Quantity(value, unit.value)
-                if to == "pint" and unit is not None
-                else value
-            )
-
-        if to is None or to == "pint":
-            return output_data
-
-        try:
-            Converter = self.converters[to]
-        except KeyError:
+        if to is not None and to != "pint" and to not in self.converters:
             available = sorted(self.converters)
-            raise ValueError(
-                f"Library '{to}' is not supported. Available: {available}"
-            ) from None
+            raise ValueError(f"Library '{to}' is not supported. Available: {available}")
 
-        conversion_mapping = Converter.get_conversion_mapping()
+        def convert_to(
+            qname: str, leaf: tuple[Spec, Unit | None], to: str | None
+        ) -> typing.Any:
+            spec, unit = leaf
+            value = glom(self.raw_outputs, spec)
+
+            if to == "pint" and unit is not None:
+                value = get_ureg().Quantity(value, unit.value)
+
+            if to is None or to == "pint":
+                return value
+
+            Converter = self.converters[to]
+
+            if qname in Converter.get_conversion_mapping():
+                return Converter().convert(qname, value)
+
+            return value
 
         if isinstance(entry, dict):
-            return {
-                sub_name: Converter().convert(f"{name}.{sub_name}", sub_value)
-                if sub_name in conversion_mapping
-                else sub_value
-                for sub_name, sub_value in output_data.items()
-            }
+            result: dict[str, typing.Any] = {}
+            for sub_name, leaf in entry.items():
+                with contextlib.suppress(GlomError):
+                    result[sub_name] = convert_to(f"{name}.{sub_name}", leaf, to)
+            return result
 
-        return (
-            Converter().convert(name, output_data)
-            if name in conversion_mapping
-            else output_data
-        )
+        return convert_to(name, entry, to)
 
     def get_output_dict(
         self,
