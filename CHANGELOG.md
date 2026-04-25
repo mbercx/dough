@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.4.0
+
+### ✨ New features
+
+* `Unit`: add per-field unit marker and `to="pint"` conversion [[aebc06a](https://github.com/mbercx/dough/commit/aebc06acacebff6f049f67a35fd3e03d4c359943)]
+
+### 📚 Documentation
+
+* `index`: flesh out landing page [[fab82e9](https://github.com/mbercx/dough/commit/fab82e9527248c17e598fbf312b745010c40504a)]
+* `README`: add minimal version [[57cbd3f](https://github.com/mbercx/dough/commit/57cbd3f13c808cf0255a2583ff3afe461398122f)]
+
+#### Developer
+
+🔄 Refactor
+
+* `BaseOutput.get_output`: collapse conversion into single helper [[71acb52](https://github.com/mbercx/dough/commit/71acb52b16f28e3f220b7604bf4a0118ad0fc250)]
+
 ## v0.3.0
 
 ### ✨ New features
