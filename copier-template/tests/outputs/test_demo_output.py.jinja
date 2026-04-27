@@ -1,0 +1,22 @@
+"""Integration test for DemoOutput."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from {{ package_name }}.outputs import DemoOutput
+
+FIXTURES = Path(__file__).parent / "fixtures" / "demo"
+
+
+def test_from_dir(robust_data_regression_check):
+    demo_out = DemoOutput.from_dir(FIXTURES)
+    robust_data_regression_check({"base_outputs": demo_out.get_output_dict()})
+
+
+def test_outputs_accessible():
+    demo_out = DemoOutput.from_dir(FIXTURES)
+    assert demo_out.outputs.code == "demo-v1"
+    assert demo_out.outputs.energy == 1.23
+    assert demo_out.outputs.author == "alice"
+    assert demo_out.outputs.n_steps == 7

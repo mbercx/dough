@@ -25,6 +25,17 @@ See the [outputs design page](https://mbercx.github.io/dough/design/outputs/) fo
 It's an opt-in plugin — activate it in your top-level `conftest.py` with `pytest_plugins = ["dough.testing.plugin"]`.
 See the [testing design page](https://mbercx.github.io/dough/design/testing/).
 
+## 🚀 Scaffolding a wrapper
+
+```bash
+mkdir my-package
+cd my-package
+git init
+copier copy --trust --vcs-ref=HEAD https://github.com/mbercx/dough .
+```
+
+The dough template renders the typed-output scaffolding, then chains a non-interactive [`python-copier`](https://github.com/mbercx/python-copier) run for the Python project skeleton (mkdocs, github docs deploy, strict type checking, codecov).
+
 ## 📦 Packages built on `dough`
 
 | Package | Code | Status |

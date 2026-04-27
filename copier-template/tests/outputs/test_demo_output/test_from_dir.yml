@@ -1,0 +1,5 @@
+base_outputs:
+  author: alice
+  code: demo-v1
+  energy: 1.23
+  n_steps: 7.0
