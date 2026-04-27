@@ -1,0 +1,8 @@
+{
+  "code": "demo-v1",
+  "energy": 1.23,
+  "metadata": {
+    "author": "alice",
+    "n_steps": 7
+  }
+}

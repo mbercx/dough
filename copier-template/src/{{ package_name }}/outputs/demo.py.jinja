@@ -1,0 +1,47 @@
+"""Demo output class and output mapping."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Annotated, Any, TextIO
+
+from dough import Unit
+from dough.outputs.base import BaseOutput, output_mapping
+from glom import Spec
+
+from {{ package_name }}.outputs.parsers.json_parser import JSONParser
+
+
+@output_mapping
+class _DemoMapping:
+    code: Annotated[str, Spec("result.code")]
+    """Identifier of the code that produced the output."""
+
+    energy: Annotated[float, Spec("result.energy"), Unit("eV")]
+    """Total energy in eV."""
+
+    author: Annotated[str, Spec("result.metadata.author")]
+    """Author recorded in metadata."""
+
+    n_steps: Annotated[int, Spec("result.metadata.n_steps")]
+    """Number of steps recorded in metadata."""
+
+
+class DemoOutput(BaseOutput[_DemoMapping]):
+    """Output container for the demo JSON format."""
+
+    @classmethod
+    def from_dir(cls, directory: str | Path) -> "DemoOutput":
+        directory = Path(directory)
+        return cls.from_files(result=directory / "result.json")
+
+    @classmethod
+    def from_files(
+        cls,
+        *,
+        result: None | str | Path | TextIO = None,
+    ) -> "DemoOutput":
+        raw_outputs: dict[str, Any] = {}
+        if result is not None:
+            raw_outputs["result"] = JSONParser.parse_from_file(result)
+        return cls(raw_outputs=raw_outputs)

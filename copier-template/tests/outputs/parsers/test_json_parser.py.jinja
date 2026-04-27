@@ -1,0 +1,11 @@
+"""Unit test for JSONParser."""
+
+from __future__ import annotations
+
+from {{ package_name }}.outputs.parsers.json_parser import JSONParser
+
+
+def test_parse_flat_and_nested():
+    content = '{"a": 1, "b": {"c": "x"}}'
+    result = JSONParser.parse(content)
+    assert result == {"a": 1, "b": {"c": "x"}}
