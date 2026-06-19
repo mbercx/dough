@@ -369,3 +369,63 @@ def test_validate_raises_typeerror_without_base_model():
     inp = MockInput()
     with pytest.raises(TypeError, match="no `base_model` attached"):
         inp.validate()
+
+
+class Printer:
+    """Collects `.text()` output, like IPython's `RepresentationPrinter`."""
+
+    def __init__(self):
+        self.parts: list[str] = []
+
+    def text(self, value: str) -> None:
+        self.parts.append(value)
+
+
+def test_repr_root_uses_class_name():
+    """The root input renders under its own class name."""
+    p = Printer()
+    MockInput(data={"name": "alice"})._repr_pretty_(p, False)
+    out = "".join(p.parts)
+    assert out.startswith("MockInput\n")
+    assert "name: alice" in out
+
+
+def test_repr_view_uses_mounted_field_name():
+    """A view's header is the field it is mounted under (`inputs`), not its
+    class (`Top`) — users should not see dough's view vocabulary."""
+    p = Printer()
+    MockInput(data={"inputs": {"name": "alice"}}).inputs._repr_pretty_(p, False)
+    assert "".join(p.parts).startswith("inputs\n")
+
+
+def test_repr_empty_root_is_header_only():
+    """An input with empty `_data` renders as just its class name."""
+    p = Printer()
+    MockInput()._repr_pretty_(p, False)
+    assert "".join(p.parts) == "MockInput"
+
+
+def test_repr_unset_anchored_view_is_header_only():
+    """An anchored view whose path is not yet set renders as just its header,
+    swallowing the `AttributeError` from the unset read."""
+
+    class Anchored(InputView):
+        _base_path = "toml"
+        flag: bool
+
+    class AnchoredInput(BaseInput):
+        toml: Anchored
+
+    p = Printer()
+    AnchoredInput().toml._repr_pretty_(p, False)
+    assert "".join(p.parts) == "toml"
+
+
+def test_repr_renders_tuple_as_list():
+    """Plain `_data` holds tuples; they render as YAML lists, not the
+    `!!python/tuple` tag `SafeDumper` emits by default."""
+    p = Printer()
+    MockInput(data={"grid": (4, 4, 4)})._repr_pretty_(p, False)
+    out = "".join(p.parts)
+    assert "!!python/tuple" not in out
+    assert "- 4" in out

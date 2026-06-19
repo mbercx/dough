@@ -1,11 +1,20 @@
 """Bare-minimum BaseInput + InputView."""
 
 import abc
+import textwrap
 import typing
 
+import yaml
 from glom import Assign, PathAccessError, glom
 
 from dough.inputs.adapter import Adapter, PathAdapter
+
+
+class DataDumper(yaml.SafeDumper):
+    """YAML dumper that renders tuples as lists, matching plain `_data`."""
+
+
+DataDumper.add_representer(tuple, lambda d, value: d.represent_list(value))
 
 
 class InputView:
@@ -27,9 +36,14 @@ class InputView:
 
     _base_path: typing.ClassVar[str] = ""
 
-    def __init__(self, owner: "BaseInput", path: tuple[str, ...] = ()) -> None:
+    def __init__(
+        self, owner: "BaseInput", path: tuple[str, ...] = (), name: str = ""
+    ) -> None:
         if self._base_path:
             path = tuple(self._base_path.split("."))
+
+        # Capture before the loops below rebind their own `name`.
+        object.__setattr__(self, "_name", name)
 
         sub_fields: dict[str, type[InputView]] = {}
         adapters: dict[str, Adapter] = {}
@@ -57,7 +71,7 @@ class InputView:
         object.__setattr__(self, "_sub_fields", sub_fields)
 
         for name, sub_cls in sub_fields.items():
-            object.__setattr__(self, name, sub_cls(owner, path + (name,)))
+            object.__setattr__(self, name, sub_cls(owner, path + (name,), name))
 
     def __getattr__(self, name: str) -> typing.Any:
         if name in self._adapters:
@@ -76,6 +90,26 @@ class InputView:
 
     def __dir__(self) -> list[str]:
         return sorted(set(object.__dir__(self)) | set(self._adapters))
+
+    def _repr_pretty_(self, p: typing.Any, _: bool) -> None:
+        """IPython pretty-print hook: YAML-shaped slice of `_data`."""
+        try:
+            data = (
+                self._owner.get_input(".".join(self._path))
+                if self._path
+                else self._owner._data
+            )
+        except AttributeError:
+            data = {}
+
+        # Header is the field name the view is mounted under, not the view
+        # class — users see `control`, not `ControlView`.
+        p.text(self._name or type(self).__name__)
+        if data:
+            body = yaml.dump(
+                data, Dumper=DataDumper, default_flow_style=False, sort_keys=False
+            )
+            p.text("\n" + textwrap.indent(body.rstrip("\n"), "  "))
 
 
 class BaseInput(abc.ABC):
@@ -98,13 +132,23 @@ class BaseInput(abc.ABC):
 
         for name, hint in typing.get_type_hints(type(self)).items():
             if isinstance(hint, type) and issubclass(hint, InputView):
-                setattr(self, name, hint(self))
+                setattr(self, name, hint(self, name=name))
             elif not hasattr(type(self), name):
                 raise TypeError(
                     f"{type(self).__name__}.{name}: annotations on a `BaseInput` "
                     f"subclass must be `InputView` subclasses or have a default "
                     f"value (got {hint!r})"
                 )
+
+    def _repr_pretty_(self, p: typing.Any, _: bool) -> None:
+        """IPython pretty-print hook: YAML-shaped view of `_data`."""
+        p.text(type(self).__name__)
+
+        if self._data:
+            body = yaml.dump(
+                self._data, Dumper=DataDumper, default_flow_style=False, sort_keys=False
+            )
+            p.text("\n" + textwrap.indent(body.rstrip("\n"), "  "))
 
     def set_input(self, path: str, value: typing.Any) -> None:
         """Write `value` into `_data` at the dotted `path`.

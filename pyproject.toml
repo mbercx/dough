@@ -41,7 +41,8 @@ tests = [
 ]
 pre-commit = [
   "pre-commit",
-  "mypy"
+  "mypy",
+  "types-PyYAML"
 ]
 pint = ["pint>0.24,<0.25"]
 pydantic = ["pydantic~=2.0"]
